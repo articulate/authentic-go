@@ -1,0 +1,10 @@
+sudo: required
+language: go
+go:
+- tip
+install:
+- make deps
+- make test
+branches:
+  only:
+  - master
