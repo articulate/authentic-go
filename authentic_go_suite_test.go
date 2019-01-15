@@ -1,4 +1,4 @@
-package authentic_go_test
+package authentic_test
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestAuthenticGo(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "AuthenticGo Suite")
+	RunSpecs(t, "Authentic Suite")
 }
