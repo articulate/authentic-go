@@ -30,9 +30,22 @@ func (m *middlewareCreator) OnSuccess(hook gin.HandlerFunc) MiddlewareCreator {
 	return m
 }
 
+// WithValidator explicitly set a validator to use
+func (m *middlewareCreator) WithValidator(v Validator) MiddlewareCreator {
+	m.Validator = v
+	return m
+}
+
 func (m *middlewareCreator) notAuthorizedError() *ErrorResponse {
 	return &ErrorResponse{
 		Message: "Unauthorized",
+		Causes:  []string{"Invalid session"},
+	}
+}
+
+func (m *middlewareCreator) forbiddenError() *ErrorResponse {
+	return &ErrorResponse{
+		Message: "Forbidden",
 		Causes:  []string{"Invalid session"},
 	}
 }
