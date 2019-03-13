@@ -1,4 +1,4 @@
-package authentic_test
+package authentic
 
 import (
 	"encoding/json"
@@ -10,18 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"gopkg.in/h2non/gock.v1"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
-	"github.com/articulate/authentic-go"
+	"gopkg.in/h2non/gock.v1"
 )
 
 const (
-	wellKnown = "/.well-known/openid-configuration"
-	testUrl   = "https://authentic.articulate.com"
+	testUrl = "https://authentic.articulate.com"
 
 	badIss = "eyJraWQiOiJEYVgxMWdBcldRZWJOSE83RU1QTUw1VnRUNEV3cmZrd2M1U2xHaVd2VXdBIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIwMH0V" +
 		"kanlqc3NidDJTMVFWcjBoNyIsInZlciI6MSwiaXNzIjoiaHR0cHM6Ly9iYWQtaXNzLmNvbSIsImF1ZCI6IjBvYWRqeWs1MjNobFpmeWIxMGg3IiwiaWF0" +
@@ -52,10 +47,21 @@ const (
 )
 
 var (
-	oidc      interface{}
-	keys      interface{}
-	validator authentic.Validator
+	oidc            interface{}
+	keys            interface{}
+	expiredStamp    int64 = 1516640000
+	notExpiredStamp int64 = 1516640800
 )
+
+type (
+	testClock struct {
+		now time.Time
+	}
+)
+
+func (c *testClock) IsBeforeNow(t time.Time) bool {
+	return c.now.Before(t)
+}
 
 func jsonFixture(file string) interface{} {
 	var body interface{}
@@ -67,7 +73,16 @@ func jsonFixture(file string) interface{} {
 }
 
 var _ = Describe("authentic", func() {
+	var (
+		validator                Validator
+		expiredValidator         Validator
+		middlewareCreator        MiddlewareCreator
+		expiredMiddlewareCreator MiddlewareCreator
+	)
+
 	Describe("Validator", func() {
+		validTestClock := &testClock{now: time.Unix(notExpiredStamp, 0)}
+		expiredTestClock := &testClock{now: time.Unix(expiredStamp, 0)}
 		BeforeEach(func() {
 			oidc = jsonFixture("oidc.json")
 			keys = jsonFixture("keys.json")
@@ -81,8 +96,14 @@ var _ = Describe("authentic", func() {
 				Get("/v1/keys").
 				Reply(200).
 				JSON(keys)
-			validator = authentic.NewValidator().
-				WithWhitelist("https://org.auth0.com/", "https://org.okta.com/")
+			validator = NewValidator().
+				WithWhitelist("https://org.auth0.com/", "https://org.okta.com/").
+				withClock(validTestClock)
+			expiredValidator = NewValidator().
+				WithWhitelist("https://org.auth0.com/", "https://org.okta.com/").
+				withClock(expiredTestClock)
+			middlewareCreator = NewMiddlewareCreator().WithValidator(validator)
+			expiredMiddlewareCreator = NewMiddlewareCreator().WithValidator(expiredValidator)
 		})
 
 		It("validates JWT against JWK", func() {
@@ -95,6 +116,18 @@ var _ = Describe("authentic", func() {
 
 		It("fails to validate valid token with wrong iss", func() {
 			Expect(validator.IsValid(badIss)).To(BeFalse())
+		})
+
+		It("sets result to Valid false", func() {
+			Expect(validator.ValidateToken(badIss).Valid).To(BeFalse())
+		})
+
+		It("correctly determines the token is expired", func() {
+			Expect(expiredValidator.ValidateToken(token).Expired).To(BeTrue())
+		})
+
+		It("correctly determines the token is not expired", func() {
+			Expect(validator.ValidateToken(token).Expired).To(BeFalse())
 		})
 
 		It("caches key and only makes one request", func() {
@@ -113,14 +146,14 @@ var _ = Describe("authentic", func() {
 				Get("/v1/keys").
 				Reply(200).
 				JSON(keys)
-			validator = authentic.NewValidator().WithCacheMaxAge(time.Microsecond)
+			validator = NewValidator().WithCacheMaxAge(time.Microsecond)
 			Expect(validator.IsValid(token)).To(BeTrue())
 			time.Sleep(time.Microsecond)
 			Expect(validator.IsValid(token)).To(BeTrue())
 		})
 
 		It("serves stale when request fails, but tries again subsequentially", func() {
-			validator = authentic.NewValidator().WithCacheMaxAge(time.Microsecond)
+			validator = NewValidator().WithCacheMaxAge(time.Microsecond)
 			Expect(validator.IsValid(token)).To(BeTrue())
 			gock.New(testUrl).
 				Times(1).
@@ -160,13 +193,13 @@ var _ = Describe("authentic", func() {
 
 		Context("middleware", func() {
 			var (
-				body        *authentic.ErrorResponse
+				body        *ErrorResponse
 				rec         *httptest.ResponseRecorder
 				mockContext *gin.Context
 			)
 
 			BeforeEach(func() {
-				body = &authentic.ErrorResponse{}
+				body = &ErrorResponse{}
 				rec = httptest.NewRecorder()
 				mockContext, _ = gin.CreateTestContext(rec)
 				mockContext.Request = &http.Request{
@@ -178,14 +211,20 @@ var _ = Describe("authentic", func() {
 
 			It("returns 401 response in Gin middleware", func() {
 				mockContext.Request.Header["Authorization"] = []string{"Bearer " + badToken}
-				authentic.NewMiddlewareCreator().CreateGinMiddleware()(mockContext)
+				middlewareCreator.CreateGinMiddleware()(mockContext)
 				json.NewDecoder(rec.Body).Decode(&body)
 				Expect(rec.Code).To(Equal(401))
 				Expect(body.Message).To(Equal("Unauthorized"))
 			})
 
+			It("returns 401 response in Gin middleware due to expired token", func() {
+				expiredMiddlewareCreator.CreateGinMiddleware()(mockContext)
+				json.NewDecoder(rec.Body).Decode(&body)
+				Expect(rec.Code).To(Equal(401))
+			})
+
 			It("does not respond with a valid token", func() {
-				authentic.NewMiddlewareCreator().CreateGinMiddleware()(mockContext)
+				middlewareCreator.CreateGinMiddleware()(mockContext)
 				Expect(rec.Code).To(Equal(200))
 			})
 		})

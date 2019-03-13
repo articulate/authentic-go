@@ -1,4 +1,4 @@
-package authentic_test
+package authentic
 
 import (
 	"testing"

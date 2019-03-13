@@ -1,6 +1,7 @@
 package authentic
 
 import (
+	"net/http"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
@@ -12,13 +13,16 @@ func (m *middlewareCreator) CreateGinMiddleware() gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		rx := regexp.MustCompile("^[B|b]earer\\s*")
 		jwt := rx.ReplaceAllString(authHeader, "")
-		if !m.Validator.IsValid(jwt) {
+		result := m.Validator.ValidateToken(jwt)
+
+		if !result.Valid || result.Expired {
 			if m.FailureHook != nil {
 				m.FailureHook(c)
 				return
 			}
 
-			c.AbortWithStatusJSON(401, m.notAuthorizedError())
+			// Per RFC responding with a 401 whether invalid or expired
+			c.AbortWithStatusJSON(http.StatusUnauthorized, m.notAuthorizedError())
 			return
 		}
 

@@ -19,14 +19,18 @@ type (
 		CreateGinMiddleware() gin.HandlerFunc
 		OnSuccess(gin.HandlerFunc) MiddlewareCreator
 		OnFailure(gin.HandlerFunc) MiddlewareCreator
+		WithValidator(Validator) MiddlewareCreator
 	}
 
 	// Validator interface for validating a JWT
 	Validator interface {
 		// IsValid check the validity of a JWT token
+		ValidateToken(string) *Result
 		IsValid(string) bool
+		IsExpired(map[string]interface{}) bool
 		WithWhitelist(...string) Validator
 		WithCacheMaxAge(time.Duration) Validator
+		withClock(Clock) Validator
 	}
 )
 
@@ -37,6 +41,7 @@ func NewValidator() Validator {
 		CacheMaxAge:  time.Hour * time.Duration(cacheMaxAgeHours),
 		ISSWhitelist: strings.Split(os.Getenv("ISS_WHITELIST"), "|"),
 		keyManager:   newKeyManager(),
+		clock:        &clock{},
 	}
 }
 
