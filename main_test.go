@@ -220,7 +220,7 @@ var _ = Describe("authentic", func() {
 			It("returns 403 response in Gin middleware due to expired token", func() {
 				expiredMiddlewareCreator.CreateGinMiddleware()(mockContext)
 				json.NewDecoder(rec.Body).Decode(&body)
-				Expect(rec.Code).To(Equal(403))
+				Expect(rec.Code).To(Equal(401))
 			})
 
 			It("does not respond with a valid token", func() {

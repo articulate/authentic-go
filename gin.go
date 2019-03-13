@@ -21,11 +21,7 @@ func (m *middlewareCreator) CreateGinMiddleware() gin.HandlerFunc {
 				return
 			}
 
-			if result.Expired {
-				c.AbortWithStatusJSON(http.StatusForbidden, m.notAuthorizedError())
-				return
-			}
-
+			// Per RFC responding with a 401 whether invalid or expired
 			c.AbortWithStatusJSON(http.StatusUnauthorized, m.notAuthorizedError())
 			return
 		}
