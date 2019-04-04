@@ -45,6 +45,7 @@ func main() {
   api := r.Group("/super/secret")
 
   middlewareOptions := &authentic.middlewareOptions{}
+  // This will set UserPayload on gin context for consumption
   api.Use(validator.CreateGinMiddleware(middlewareOptions))
 }
 ```

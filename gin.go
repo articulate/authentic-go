@@ -26,6 +26,8 @@ func (m *middlewareCreator) CreateGinMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		c.Set("UserPayload", result)
+
 		if m.SuccessHook != nil {
 			m.SuccessHook(c)
 		}
